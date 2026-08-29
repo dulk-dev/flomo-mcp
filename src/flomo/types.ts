@@ -30,6 +30,12 @@ export type MemoCache = {
   latest_updated_at: number;
   latest_slug: string;
   synced_at: number;
+  /**
+   * True only after `/memo/updated/` returned an empty page (or a stuck
+   * cursor). Missing/false means catch-up is still in progress — never treat
+   * a short page as EOF.
+   */
+  complete: boolean;
   memos: Record<string, FlomoMemo>;
 };
 
@@ -47,5 +53,5 @@ export const v1 = (apiPath: string) => `${API_V1}${apiPath}`;
 export const v2 = (apiPath: string) => `${API_V2}${apiPath}`;
 
 export function emptyMemoCache(): MemoCache {
-  return { latest_updated_at: 0, latest_slug: '', synced_at: 0, memos: {} };
+  return { latest_updated_at: 0, latest_slug: '', synced_at: 0, complete: false, memos: {} };
 }

@@ -8,11 +8,15 @@ const SIGN_SALT = 'dbbc3dd73364b4084c3a69346e0ce2b2';
 export type ApiParamValue = string | number | boolean | Array<string | number>;
 export type ApiParams = Record<string, ApiParamValue | undefined>;
 
+/**
+ * flomo web / memo timestamps are China Standard Time. Cloudflare Workers
+ * run UTC, so `getTimezoneOffset()` would send `0:0` and desync the cursor
+ * from `toEpochSeconds` (which already assumes +08:00).
+ */
+export const FLOMO_TZ = '8:0';
+
 export function getTz(): string {
-  const offsetMin = -new Date().getTimezoneOffset();
-  const sign = offsetMin < 0 ? '-' : '';
-  const abs = Math.abs(offsetMin);
-  return `${sign}${Math.floor(abs / 60)}:${abs % 60}`;
+  return FLOMO_TZ;
 }
 
 /** flomo 通用签名：ksort → k=v& 串联（数组 k[]=v& 且元素排序）→ MD5(base+salt). */
@@ -67,6 +71,9 @@ export type InsightStream = {
 };
 
 export class FlomoClient {
+  /** Avoid a KV get on every apiCall during a multi-page sync. */
+  private memoryToken: string | null = null;
+
   constructor(
     private readonly store: Store,
     private readonly credentials: FlomoCredentials,
@@ -98,6 +105,7 @@ export class FlomoClient {
       return await fn(token);
     } catch (error) {
       if (!(error instanceof FlomoAuthError)) throw error;
+      this.memoryToken = null;
       await this.store.clearToken();
       if (!this.credentials.account || !this.credentials.password) throw error;
       const next = await this.loginByEmail();
@@ -106,11 +114,16 @@ export class FlomoClient {
   }
 
   private async ensureToken(): Promise<string> {
+    if (this.memoryToken) return this.memoryToken;
     const cached = await this.store.loadToken();
-    if (cached?.access_token) return cached.access_token;
+    if (cached?.access_token) {
+      this.memoryToken = cached.access_token;
+      return this.memoryToken;
+    }
     if (this.credentials.accessToken) {
       await this.store.saveToken(tokenRecord(this.credentials.accessToken, {}));
-      return this.credentials.accessToken;
+      this.memoryToken = this.credentials.accessToken;
+      return this.memoryToken;
     }
     return this.loginByEmail();
   }
@@ -154,6 +167,7 @@ export class FlomoClient {
     const token = data && typeof data.access_token === 'string' ? data.access_token : '';
     if (!token) throw new FlomoApiError('登录成功但响应里没有 access_token，接口可能已改版');
     await this.store.saveToken(tokenRecord(token, data ?? {}));
+    this.memoryToken = token;
     return token;
   }
 

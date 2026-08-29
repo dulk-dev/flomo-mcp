@@ -31,7 +31,7 @@ async function catchUpMemos(env: WorkerEnv): Promise<void> {
 }
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/" && request.method === "GET") {
       return Response.json({ ok: true, name: "flomo-mcp" });
@@ -57,10 +57,12 @@ export default {
       return Response.json({ error: credentials.error }, { status: 500 });
     }
 
-    return handleMcpWebRequest(request, {
+    const response = await handleMcpWebRequest(request, {
       store: new KvStore(env.CACHE),
       credentials,
     });
+    ctx.waitUntil(catchUpMemos(env));
+    return response;
   },
 
   async scheduled(_controller: ScheduledController, env: WorkerEnv): Promise<void> {

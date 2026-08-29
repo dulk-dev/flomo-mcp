@@ -83,11 +83,25 @@ export function parseMemoCache(raw: string): MemoCache {
     ) {
       return emptyMemoCache();
     }
+    const memos = rec.memos as MemoCache["memos"];
+    // Snapshots written before `complete` existed treated a short page as EOF
+    // and froze latest_* / synced_at. Drop that cursor so the next sync
+    // re-walks from 0 and merges into the memos we already have.
+    if (!Object.prototype.hasOwnProperty.call(rec, "complete")) {
+      return {
+        latest_updated_at: 0,
+        latest_slug: "",
+        synced_at: 0,
+        complete: false,
+        memos,
+      };
+    }
     return {
       latest_updated_at: Number(rec.latest_updated_at) || 0,
       latest_slug: String(rec.latest_slug || ""),
       synced_at: Number(rec.synced_at) || 0,
-      memos: rec.memos as MemoCache["memos"],
+      complete: rec.complete === true,
+      memos,
     };
   } catch {
     return emptyMemoCache();
