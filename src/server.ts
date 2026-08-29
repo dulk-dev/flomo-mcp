@@ -1,0 +1,54 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolContext } from './tools/result.js';
+import { registerWhoami } from './tools/whoami.js';
+import { registerMemos } from './tools/memos.js';
+import { registerSearch } from './tools/search.js';
+import { registerGet } from './tools/get.js';
+import { registerNew } from './tools/new.js';
+import { registerEdit } from './tools/edit.js';
+import { registerDelete } from './tools/delete.js';
+import { registerRestore } from './tools/restore.js';
+import { registerTrash } from './tools/trash.js';
+import { registerPin } from './tools/pin.js';
+import { registerUnpin } from './tools/unpin.js';
+import { registerTags } from './tools/tags.js';
+import { registerTagPin } from './tools/tag-pin.js';
+import { registerTagUnpin } from './tools/tag-unpin.js';
+import { registerTagRename } from './tools/tag-rename.js';
+import { registerDaily } from './tools/daily.js';
+import { registerRandom } from './tools/random.js';
+import { registerStats } from './tools/stats.js';
+import { registerRelated } from './tools/related.js';
+import { registerRevisions } from './tools/revisions.js';
+import { registerUpload } from './tools/upload.js';
+import { registerInsight } from './tools/insight.js';
+
+export const SERVER_NAME = 'flomo-mcp';
+export const SERVER_VERSION = '0.1.0';
+
+export function createFlomoMcpServer(ctx: ToolContext): McpServer {
+  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+  registerWhoami(server, ctx);
+  registerMemos(server, ctx);
+  registerSearch(server, ctx);
+  registerGet(server, ctx);
+  registerNew(server, ctx);
+  registerEdit(server, ctx);
+  registerDelete(server, ctx);
+  registerRestore(server, ctx);
+  registerTrash(server, ctx);
+  registerPin(server, ctx);
+  registerUnpin(server, ctx);
+  registerTags(server, ctx);
+  registerTagPin(server, ctx);
+  registerTagUnpin(server, ctx);
+  registerTagRename(server, ctx);
+  registerDaily(server, ctx);
+  registerRandom(server, ctx);
+  registerStats(server, ctx);
+  registerRelated(server, ctx);
+  registerRevisions(server, ctx);
+  registerUpload(server, ctx);
+  registerInsight(server, ctx);
+  return server;
+}
