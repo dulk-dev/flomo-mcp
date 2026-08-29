@@ -23,10 +23,8 @@ export function registerTags(server: McpServer, ctx: ToolContext): void {
       if (sortKey !== 'count' && sortKey !== 'name') {
         throw new FlomoArgumentError(`sort 只能是 count 或 name（got "${String(args.sort)}"）`);
       }
-      const [officialTags, cache] = await Promise.all([
-        fetchAllTags(ctx.client),
-        syncMemoCache(ctx.client, ctx.store),
-      ]);
+      const cache = await syncMemoCache(ctx.client, ctx.store);
+      const officialTags = await fetchAllTags(ctx.client);
       const meta = new Map(officialTags.map((t) => [String(t.name || ''), t]));
       const counts = new Map<string, number>();
       const lastUsed = new Map<string, string>();

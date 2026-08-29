@@ -10,7 +10,7 @@ export function registerMemos(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
     'flomo_memos',
     {
-      description: '列出 memo（本地同步缓存）。支持 tag 前缀筛选、pinned 只看置顶。默认 60 秒内直接用缓存',
+      description: '列出 memo（本地同步缓存）。支持 tag 前缀筛选、pinned 只看置顶。默认 15 分钟内直接用缓存',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(500).optional().describe('返回条数，默认 20'),
         tag: z.string().optional().describe('按标签筛选（前缀匹配，如 读书 命中 读书/认知觉醒）'),

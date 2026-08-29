@@ -1,5 +1,7 @@
 import { bearerMatches, unauthorizedResponse } from "./auth.js";
 import { parseCredentials } from "./config.js";
+import { FlomoClient } from "./flomo/client.js";
+import { isMemoCacheFresh, syncMemoCache } from "./flomo/memos.js";
 import { KvStore } from "./flomo/store.js";
 import { handleMcpWebRequest } from "./mcp-http.js";
 
@@ -9,6 +11,24 @@ type WorkerEnv = Env & {
   FLOMO_PASSWORD?: string;
   FLOMO_ACCESS_TOKEN?: string;
 };
+
+async function catchUpMemos(env: WorkerEnv): Promise<void> {
+  try {
+    const store = new KvStore(env.CACHE);
+    const cache = await store.loadMemos();
+    if (isMemoCacheFresh(cache)) return;
+    const credentials = parseCredentials({
+      FLOMO_ACCESS_TOKEN: env.FLOMO_ACCESS_TOKEN,
+      FLOMO_ACCOUNT: env.FLOMO_ACCOUNT,
+      FLOMO_PASSWORD: env.FLOMO_PASSWORD,
+    });
+    if ("error" in credentials) return;
+    await syncMemoCache(new FlomoClient(store, credentials), store);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ msg: "memo catch-up failed", error: message }));
+  }
+}
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -41,5 +61,9 @@ export default {
       store: new KvStore(env.CACHE),
       credentials,
     });
+  },
+
+  async scheduled(_controller: ScheduledController, env: WorkerEnv): Promise<void> {
+    await catchUpMemos(env);
   },
 };

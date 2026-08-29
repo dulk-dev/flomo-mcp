@@ -4,8 +4,18 @@ import { getTz } from './client.js';
 import type { Store } from './store.js';
 import { v1, WEB_BASE, type FlomoFile, type FlomoMemo, type MemoCache } from './types.js';
 
-const SYNC_PAGE_LIMIT = 200;
-const SYNC_FRESH_MS = 60 * 1000;
+/** flomo `/memo/updated/` page size. */
+export const SYNC_PAGE_LIMIT = 200;
+/** Skip flomo list API when a full catch-up finished within this window. */
+export const SYNC_FRESH_MS = 15 * 60 * 1000;
+/**
+ * Pages per invocation. Each page is 1 fetch (+ KV on save). Free Workers
+ * allow 50 subrequests; 8 pages leaves room for token/lock/save and a
+ * parallel `/user/me`. Remaining pages continue on the next call or cron.
+ */
+export const SYNC_PAGES_PER_TURN = 8;
+
+const syncInflight = new Map<string, Promise<MemoCache>>();
 
 export const MEMO_COLUMNS = ['slug', 'content', 'tags', 'images', 'created_at', 'updated_at', 'url'] as const;
 
@@ -168,16 +178,53 @@ export function filterSearchHits(memos: FlomoMemo[], keyword: string, tag = ''):
   return memos.filter((m) => memoMatchesTag(m, tag) && memoMatchesKeywords(m, words));
 }
 
+export function isMemoCacheFresh(cache: MemoCache, now = Date.now()): boolean {
+  return now - cache.synced_at < SYNC_FRESH_MS;
+}
+
 export async function syncMemoCache(
   client: FlomoClient,
   store: Store,
-  { force = false }: { force?: boolean } = {},
+  { force = false, maxPages = SYNC_PAGES_PER_TURN }: { force?: boolean; maxPages?: number } = {},
 ): Promise<MemoCache> {
-  const cache = await store.loadMemos();
-  if (!force && Date.now() - cache.synced_at < SYNC_FRESH_MS) return cache;
+  const existing = syncInflight.get(store.syncScope);
+  if (existing) return existing;
+  const pending = syncMemoCacheTurn(client, store, { force, maxPages }).finally(() => {
+    syncInflight.delete(store.syncScope);
+  });
+  syncInflight.set(store.syncScope, pending);
+  return pending;
+}
+
+async function syncMemoCacheTurn(
+  client: FlomoClient,
+  store: Store,
+  { force, maxPages }: { force: boolean; maxPages: number },
+): Promise<MemoCache> {
+  const snapshot = await store.loadMemos();
+  if (!force && isMemoCacheFresh(snapshot)) return snapshot;
+  const locked = await store.tryBeginSync();
+  if (!locked) return store.loadMemos();
+  try {
+    const cache = await store.loadMemos();
+    if (!force && isMemoCacheFresh(cache)) return cache;
+    return await pullMemoPages(client, store, cache, maxPages);
+  } finally {
+    await store.endSync();
+  }
+}
+
+async function pullMemoPages(
+  client: FlomoClient,
+  store: Store,
+  cache: MemoCache,
+  maxPages: number,
+): Promise<MemoCache> {
   let cursorAt = cache.latest_updated_at || 0;
   let cursorSlug = cache.latest_slug || '';
-  for (let page = 0; page < 500; page++) {
+  let complete = false;
+  const pages = Math.max(1, maxPages);
+  for (let page = 0; page < pages; page++) {
     const extra: Record<string, string> = {
       limit: String(SYNC_PAGE_LIMIT),
       latest_updated_at: String(cursorAt),
@@ -191,18 +238,31 @@ export async function syncMemoCache(
       if (!memo) continue;
       cache.memos[memo.slug] = memo;
     }
-    if (batch.length > 0) {
-      const last = asMemo(batch[batch.length - 1]);
-      if (last) {
-        cursorAt = toEpochSeconds(last.updated_at || '');
-        cursorSlug = last.slug;
-      }
+    if (batch.length === 0) {
+      complete = true;
+      break;
     }
-    if (batch.length < SYNC_PAGE_LIMIT) break;
+    const last = asMemo(batch[batch.length - 1]);
+    if (!last) {
+      complete = true;
+      break;
+    }
+    const nextAt = toEpochSeconds(last.updated_at || '');
+    const nextSlug = last.slug;
+    if (nextAt === cursorAt && nextSlug === cursorSlug) {
+      complete = true;
+      break;
+    }
+    cursorAt = nextAt;
+    cursorSlug = nextSlug;
+    if (batch.length < SYNC_PAGE_LIMIT) {
+      complete = true;
+      break;
+    }
   }
   cache.latest_updated_at = cursorAt;
   cache.latest_slug = cursorSlug;
-  cache.synced_at = Date.now();
+  if (complete) cache.synced_at = Date.now();
   await store.saveMemos(cache);
   return cache;
 }
@@ -220,7 +280,7 @@ export async function fetchAllTags(
   const out: Record<string, unknown>[] = [];
   let latestUpdatedAt = '0';
   let latestId = '';
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; page < SYNC_PAGES_PER_TURN; page++) {
     const extra: Record<string, string> = { limit: '200', latest_updated_at: latestUpdatedAt, tz: getTz() };
     if (latestId) extra.latest_id = latestId;
     const batch = await client.apiCall('GET', v1('/tag/updated/'), extra);

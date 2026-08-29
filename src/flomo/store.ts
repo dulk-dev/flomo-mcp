@@ -1,17 +1,50 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { FlomoApiError } from "../errors.js";
 import { emptyMemoCache, type MemoCache, type TokenRecord } from "./types.js";
 
 export interface Store {
+  /** Same-isolate sync mutex key. All Worker KV stores share one scope. */
+  readonly syncScope: string;
   loadToken(): Promise<TokenRecord | null>;
   saveToken(record: TokenRecord): Promise<void>;
   clearToken(): Promise<void>;
   loadMemos(): Promise<MemoCache>;
   saveMemos(cache: MemoCache): Promise<void>;
+  tryBeginSync(): Promise<boolean>;
+  endSync(): Promise<void>;
 }
 
 const TOKEN_KEY = "token.json";
 const MEMOS_KEY = "memos.json";
+const SYNC_LOCK_KEY = "sync.lock";
+/** KV expirationTtl minimum is 60s; also the lock TTL if endSync never runs. */
+const SYNC_LOCK_TTL_SEC = 60;
+
+export const KV_VALUE_MAX_BYTES = 25 * 1024 * 1024;
+
+const dirSyncLocks = new Map<string, number>();
+
+export function serializeMemoCache(
+  cache: MemoCache,
+  { maxBytes }: { maxBytes?: number } = {},
+): string {
+  let json: string;
+  try {
+    json = JSON.stringify(cache);
+  } catch {
+    throw new FlomoApiError("memo 缓存无法序列化（体积过大）");
+  }
+  if (maxBytes != null) {
+    const bytes = new TextEncoder().encode(json).byteLength;
+    if (bytes > maxBytes) {
+      throw new FlomoApiError(
+        `memo 缓存 ${bytes} 字节超过 KV 单 key 上限 ${maxBytes}（25 MiB），停止写入以免打坏现有快照`,
+      );
+    }
+  }
+  return json;
+}
 
 export function parseTokenRecord(raw: string): TokenRecord | null {
   try {
@@ -62,7 +95,11 @@ export function parseMemoCache(raw: string): MemoCache {
 }
 
 export class DirStore implements Store {
-  constructor(private readonly dir: string) {}
+  readonly syncScope: string;
+
+  constructor(private readonly dir: string) {
+    this.syncScope = `dir:${dir}`;
+  }
 
   private tokenPath(): string {
     return path.join(this.dir, "token.json");
@@ -103,17 +140,35 @@ export class DirStore implements Store {
 
   async saveMemos(cache: MemoCache): Promise<void> {
     await mkdir(this.dir, { recursive: true });
-    await writeFile(this.memosPath(), JSON.stringify(cache), "utf8");
+    await writeFile(this.memosPath(), serializeMemoCache(cache), "utf8");
+  }
+
+  async tryBeginSync(): Promise<boolean> {
+    const now = Date.now();
+    const until = dirSyncLocks.get(this.dir) ?? 0;
+    if (now < until) return false;
+    dirSyncLocks.set(this.dir, now + SYNC_LOCK_TTL_SEC * 1000);
+    return true;
+  }
+
+  async endSync(): Promise<void> {
+    dirSyncLocks.delete(this.dir);
   }
 }
 
 export type KvLike = {
   get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
+  put(
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number },
+  ): Promise<void>;
   delete(key: string): Promise<void>;
 };
 
 export class KvStore implements Store {
+  readonly syncScope = "kv";
+
   constructor(private readonly kv: KvLike) {}
 
   async loadToken(): Promise<TokenRecord | null> {
@@ -135,6 +190,20 @@ export class KvStore implements Store {
   }
 
   async saveMemos(cache: MemoCache): Promise<void> {
-    await this.kv.put(MEMOS_KEY, JSON.stringify(cache));
+    await this.kv.put(
+      MEMOS_KEY,
+      serializeMemoCache(cache, { maxBytes: KV_VALUE_MAX_BYTES }),
+    );
+  }
+
+  async tryBeginSync(): Promise<boolean> {
+    const held = await this.kv.get(SYNC_LOCK_KEY);
+    if (held) return false;
+    await this.kv.put(SYNC_LOCK_KEY, "1", { expirationTtl: SYNC_LOCK_TTL_SEC });
+    return true;
+  }
+
+  async endSync(): Promise<void> {
+    await this.kv.delete(SYNC_LOCK_KEY);
   }
 }

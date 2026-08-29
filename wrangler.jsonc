@@ -8,6 +8,7 @@
     "logs": { "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 1 },
   },
+  "triggers": { "crons": ["* * * * *"] },
   "routes": [{ "pattern": "flomo.chaochun.cc", "custom_domain": true }],
   "kv_namespaces": [
     { "binding": "CACHE", "id": "a32c6fa204594967beaa51dfb37208fd" },
