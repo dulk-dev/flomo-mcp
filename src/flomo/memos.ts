@@ -4,16 +4,17 @@ import { getTz } from './client.js';
 import type { Store } from './store.js';
 import { v1, WEB_BASE, type FlomoFile, type FlomoMemo, type MemoCache } from './types.js';
 
-/** flomo `/memo/updated/` page size. */
+/** flomo `/memo/updated/` requested page size (server may return fewer and still have more). */
 export const SYNC_PAGE_LIMIT = 200;
 /** Skip flomo list API when a full catch-up finished within this window. */
 export const SYNC_FRESH_MS = 15 * 60 * 1000;
 /**
- * Pages per invocation. Each page is 1 fetch (+ KV on save). Free Workers
- * allow 50 subrequests; 8 pages leaves room for token/lock/save and a
- * parallel `/user/me`. Remaining pages continue on the next call or cron.
+ * Pages per invocation. Each page is 1 fetch. Token is kept in memory after
+ * the first KV read. Free Workers allow 50 external subrequests; 40 pages
+ * leaves room for `/user/me`, login, and KV. Remaining pages continue via
+ * waitUntil / cron. Hitting the subrequest cap saves progress, not EOF.
  */
-export const SYNC_PAGES_PER_TURN = 8;
+export const SYNC_PAGES_PER_TURN = 40;
 
 const syncInflight = new Map<string, Promise<MemoCache>>();
 
@@ -179,7 +180,12 @@ export function filterSearchHits(memos: FlomoMemo[], keyword: string, tag = ''):
 }
 
 export function isMemoCacheFresh(cache: MemoCache, now = Date.now()): boolean {
-  return now - cache.synced_at < SYNC_FRESH_MS;
+  return cache.complete === true && now - cache.synced_at < SYNC_FRESH_MS;
+}
+
+export function isSubrequestLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /too many subrequests/i.test(message);
 }
 
 export async function syncMemoCache(
@@ -231,7 +237,19 @@ async function pullMemoPages(
       tz: getTz(),
     };
     if (cursorSlug) extra.latest_slug = cursorSlug;
-    const batch = await client.apiCall('GET', v1('/memo/updated/'), extra);
+    let batch: unknown;
+    try {
+      batch = await client.apiCall('GET', v1('/memo/updated/'), extra);
+    } catch (error) {
+      if (!isSubrequestLimitError(error)) throw error;
+      // Keep last successful cursor. Do not mark complete.
+      cache.latest_updated_at = cursorAt;
+      cache.latest_slug = cursorSlug;
+      cache.complete = false;
+      cache.synced_at = 0;
+      await store.saveMemos(cache);
+      return cache;
+    }
     if (!Array.isArray(batch)) throw new FlomoApiError('flomo /memo/updated/ 返回了非数组数据');
     for (const item of batch) {
       const memo = asMemo(item);
@@ -255,14 +273,14 @@ async function pullMemoPages(
     }
     cursorAt = nextAt;
     cursorSlug = nextSlug;
-    if (batch.length < SYNC_PAGE_LIMIT) {
-      complete = true;
-      break;
-    }
+    // A short page is not EOF. flomo may return < limit (payload cap) while
+    // older/newer memos remain. Only an empty follow-up page ends catch-up.
   }
   cache.latest_updated_at = cursorAt;
   cache.latest_slug = cursorSlug;
+  cache.complete = complete;
   if (complete) cache.synced_at = Date.now();
+  else cache.synced_at = 0;
   await store.saveMemos(cache);
   return cache;
 }
@@ -270,6 +288,7 @@ async function pullMemoPages(
 export async function invalidateMemoCacheFreshness(store: Store): Promise<void> {
   const cache = await store.loadMemos();
   cache.synced_at = 0;
+  cache.complete = false;
   await store.saveMemos(cache);
 }
 
@@ -283,7 +302,13 @@ export async function fetchAllTags(
   for (let page = 0; page < SYNC_PAGES_PER_TURN; page++) {
     const extra: Record<string, string> = { limit: '200', latest_updated_at: latestUpdatedAt, tz: getTz() };
     if (latestId) extra.latest_id = latestId;
-    const batch = await client.apiCall('GET', v1('/tag/updated/'), extra);
+    let batch: unknown;
+    try {
+      batch = await client.apiCall('GET', v1('/tag/updated/'), extra);
+    } catch (error) {
+      if (isSubrequestLimitError(error)) break;
+      throw error;
+    }
     if (!Array.isArray(batch) || batch.length === 0) break;
     for (const item of batch) {
       if (item && typeof item === 'object') out.push(item as Record<string, unknown>);
@@ -291,10 +316,12 @@ export async function fetchAllTags(
     const last = batch[batch.length - 1];
     if (last && typeof last === 'object') {
       const rec = last as Record<string, unknown>;
-      latestUpdatedAt = String(toEpochSeconds(String(rec.updated_at || '')));
-      latestId = String(rec.id ?? '');
+      const nextAt = String(toEpochSeconds(String(rec.updated_at || '')));
+      const nextId = String(rec.id ?? '');
+      if (nextAt === latestUpdatedAt && nextId === latestId) break;
+      latestUpdatedAt = nextAt;
+      latestId = nextId;
     }
-    if (batch.length < 200) break;
   }
   return includeDeleted ? out : out.filter((t) => !t.deleted_at);
 }

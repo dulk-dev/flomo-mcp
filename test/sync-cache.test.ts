@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { FlomoClient } from '../src/flomo/client.js';
+import { FLOMO_TZ, getTz } from '../src/flomo/client.js';
 import {
   isMemoCacheFresh,
   SYNC_FRESH_MS,
   SYNC_PAGE_LIMIT,
   syncMemoCache,
 } from '../src/flomo/memos.js';
-import { KV_VALUE_MAX_BYTES, serializeMemoCache, type Store } from '../src/flomo/store.js';
+import { KV_VALUE_MAX_BYTES, parseMemoCache, serializeMemoCache, type Store } from '../src/flomo/store.js';
 import { emptyMemoCache, type MemoCache, type TokenRecord } from '../src/flomo/types.js';
 import { FlomoApiError } from '../src/errors.js';
 
@@ -86,29 +87,44 @@ describe('syncMemoCache 分页续传', () => {
     expect(client.calls).toBe(2);
     expect(Object.keys(cache.memos)).toHaveLength(400);
     expect(cache.latest_slug).toBe('m399');
+    expect(cache.complete).toBe(false);
     expect(isMemoCacheFresh(cache)).toBe(false);
     expect(store.memos.latest_slug).toBe('m399');
   });
 
-  it('下一轮从已落盘进度继续，短页结束才标新鲜', async () => {
+  it('下一轮从已落盘进度继续，空页结束才标新鲜', async () => {
     const store = new MemoryStore('resume');
     const client = fakeClient([
       fullPage(0),
       fullPage(200),
       [{ slug: 'tail', content: '<p>t</p>', updated_at: '2026-01-01 12:00:01', created_at: '2026-01-01 12:00:01' }],
+      [],
     ]);
     await syncMemoCache(client, store, { maxPages: 2 });
     expect(isMemoCacheFresh(store.memos)).toBe(false);
     const cache = await syncMemoCache(client, store, { maxPages: 2 });
-    expect(client.calls).toBe(3);
+    expect(client.calls).toBe(4);
     expect(cache.memos.tail?.slug).toBe('tail');
     expect(Object.keys(cache.memos)).toHaveLength(401);
+    expect(cache.complete).toBe(true);
+    expect(isMemoCacheFresh(cache)).toBe(true);
+  });
+
+  it('短页不是 EOF：后面还有满页就继续翻', async () => {
+    const store = new MemoryStore('short-not-eof');
+    const short = fullPage(0).slice(0, 31);
+    const client = fakeClient([short, fullPage(31), []]);
+    const cache = await syncMemoCache(client, store, { maxPages: 8 });
+    expect(client.calls).toBe(3);
+    expect(Object.keys(cache.memos)).toHaveLength(231);
+    expect(cache.complete).toBe(true);
     expect(isMemoCacheFresh(cache)).toBe(true);
   });
 
   it('新鲜窗口内不再打 /memo/updated/', async () => {
     const store = new MemoryStore('fresh', {
       ...emptyMemoCache(),
+      complete: true,
       synced_at: Date.now(),
     });
     const client = fakeClient([fullPage(0)]);
@@ -149,5 +165,60 @@ describe('syncMemoCache 分页续传', () => {
     expect(calls).toBe(2);
     expect(Object.keys(left.memos)).toHaveLength(400);
     expect(Object.keys(right.memos)).toHaveLength(400);
+  });
+
+  it('子请求超限时落盘已翻过的游标，不标完成', async () => {
+    const store = new MemoryStore('subreq');
+    let calls = 0;
+    const client = {
+      apiCall: async () => {
+        calls += 1;
+        if (calls === 3) throw new Error('Too many subrequests by single Worker invocation');
+        return fullPage((calls - 1) * SYNC_PAGE_LIMIT);
+      },
+    } as unknown as FlomoClient;
+    const cache = await syncMemoCache(client, store, { maxPages: 8 });
+    expect(calls).toBe(3);
+    expect(Object.keys(cache.memos)).toHaveLength(400);
+    expect(cache.latest_slug).toBe('m399');
+    expect(cache.complete).toBe(false);
+    expect(isMemoCacheFresh(cache)).toBe(false);
+  });
+});
+
+describe('parseMemoCache 旧快照', () => {
+  it('没有 complete 字段时丢掉游标并保留已有 memo', () => {
+    const cache = parseMemoCache(JSON.stringify({
+      latest_updated_at: 1700000000,
+      latest_slug: 'stuck',
+      synced_at: Date.now(),
+      memos: { a: { slug: 'a', content: 'keep' } },
+    }));
+    expect(cache.latest_updated_at).toBe(0);
+    expect(cache.latest_slug).toBe('');
+    expect(cache.synced_at).toBe(0);
+    expect(cache.complete).toBe(false);
+    expect(cache.memos.a?.slug).toBe('a');
+  });
+
+  it('新快照 complete=true 时保留游标', () => {
+    const cache = parseMemoCache(JSON.stringify({
+      latest_updated_at: 1700000000,
+      latest_slug: 'ok',
+      synced_at: 123,
+      complete: true,
+      memos: { a: { slug: 'a' } },
+    }));
+    expect(cache.latest_updated_at).toBe(1700000000);
+    expect(cache.latest_slug).toBe('ok');
+    expect(cache.complete).toBe(true);
+    expect(cache.synced_at).toBe(123);
+  });
+});
+
+describe('getTz', () => {
+  it('固定发 8:0，不跟 Worker UTC 走', () => {
+    expect(getTz()).toBe('8:0');
+    expect(FLOMO_TZ).toBe('8:0');
   });
 });
