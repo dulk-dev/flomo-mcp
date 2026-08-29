@@ -13,7 +13,4 @@
   "kv_namespaces": [
     { "binding": "CACHE", "id": "a32c6fa204594967beaa51dfb37208fd" },
   ],
-  "limits": {
-    "subrequests": 1000,
-  },
 }
