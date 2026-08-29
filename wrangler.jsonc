@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "flomo-mcp",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-29",
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 },
+  },
+  "routes": [{ "pattern": "flomo.chaochun.cc", "custom_domain": true }],
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "a32c6fa204594967beaa51dfb37208fd" },
+  ],
+}
