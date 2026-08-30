@@ -127,13 +127,38 @@ token 和 memo 缓存走 Store 接口，本地实现写到 `FLOMO_DATA_DIR`，�
 
 | mode        | 是否耗每日额度 | 主要参数                                                        |
 | ----------- | -------------- | --------------------------------------------------------------- |
-| `history`   | 否             | `limit`、`full`                                                 |
+| `history`   | 否             | `page`、`limit`、`full`、`from` / `to`、`source`、`chat_id`     |
 | `templates` | 否             | 无                                                              |
 | `memo`      | 是             | `slug`，可选 `think`                                            |
 | `query`     | 是             | `template_id`，可选 `tag` / `from` / `to` / `keyword` / `think` |
 | `related`   | 是             | `slug`，可选 `think`                                            |
 
 生成结果会进网页版洞察历史。额度看 `flomo_whoami` 的 `insight_remaining`（Pro 每日次数由 flomo 决定）。`query` 不圈日期或标签时，服务端常报「符合条件的笔记数量太少」。`related` 会先拉该笔记相关推荐前 10 条再生成。
+
+### 归档全部洞察历史
+
+`mode=history` 不再一次倒出全部全文。MCP 客户端大约在 40KB 截断单次工具结果，所以每页必须自己够小。
+
+返回值是对象，不是数组：
+
+```json
+{
+  "items": [{ "title": "...", "chat_id": "...", "content": "...", "created_at": "..." }],
+  "page": 1,
+  "limit": 3,
+  "total": 57,
+  "has_more": true,
+  "next_page": 2
+}
+```
+
+客户端这样走完全部：
+
+1. 目录：`mode=history` `full=false` `page=1`（默认每页 20，最多 40）。看 `has_more`，有则 `page=next_page` 再拉。
+2. 全文：对每条 `chat_id` 再调 `mode=history` `chat_id=<id>`（单条全文，不标已读）；或者 `full=true` 按 `page` 翻（默认每页 3，最多 5）。
+3. 不要再用 `limit=100, full=true` 指望一次拿完。这个值会被截到每页上限，后面的页靠 `page`。
+
+`from` / `to` 按 `created_at` 的日期过滤。flomo 上游 `GET /memo/insight/history` 只认 `page`、`page_size`、`source`，没有日期字段；日期窗口是 Worker 连翻上游页再过滤。`template_id` 同样是 Worker 侧匹配 `template_id` 或 `template_name`。`source`（`memo` / `query` / `recommended`）会原样传给上游。
 
 ## 和官方 Max MCP 的差异
 

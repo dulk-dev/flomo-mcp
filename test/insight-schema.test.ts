@@ -10,6 +10,14 @@ describe('flomo_insight mode 校验', () => {
   it('history / templates 是只读，不要求 slug 或 template_id', () => {
     expect(insightInputSchema.parse({ mode: 'history' }).mode).toBe('history');
     expect(insightInputSchema.parse({ mode: 'history', limit: 5, full: true }).mode).toBe('history');
+    expect(insightInputSchema.parse({
+      mode: 'history',
+      page: 2,
+      from: '2025-06-01',
+      to: '2025-08-31',
+      chat_id: 'chat-1',
+      source: 'query',
+    }).mode).toBe('history');
     expect(insightInputSchema.parse({ mode: 'templates' }).mode).toBe('templates');
     expect(isReadonlyInsightMode('history')).toBe(true);
     expect(isReadonlyInsightMode('templates')).toBe(true);
@@ -42,7 +50,8 @@ describe('flomo_insight mode 校验', () => {
   it('对外 JSON Schema 必须带上 mode，不能是空 object', () => {
     const shape = insightToolSchema.shape;
     expect(Object.keys(shape)).toEqual(expect.arrayContaining([
-      'mode', 'limit', 'full', 'slug', 'think', 'template_id', 'tag', 'from', 'to', 'keyword',
+      'mode', 'limit', 'full', 'page', 'slug', 'think', 'template_id', 'tag', 'from', 'to',
+      'keyword', 'source', 'chat_id',
     ]));
     expect(insightToolSchema.parse({ mode: 'history' }).mode).toBe('history');
     expect(insightToolSchema.safeParse({}).success).toBe(false);
