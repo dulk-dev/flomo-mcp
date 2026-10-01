@@ -9,7 +9,7 @@ export function registerStats(server: McpServer, ctx: ToolContext): void {
     'flomo_stats',
     {
       description:
-        'memo 总数 / 记录天数 / 标签数 / 连续记录等统计（与网页侧栏同口径，来自本地 /memo/updated/ 缓存）。syncComplete=false 时缓存还没翻完，数字会偏小，再 refresh 或等下一分钟 cron',
+        'memo 总数 / 记录天数 / 标签数 / 连续记录等统计（与网页侧栏同口径，来自本地 /memo/updated/ 缓存）。syncComplete=false 时缓存还没翻完，数字会偏小，再 refresh 或等每天一次的 cron（北京时间 0:00）',
       inputSchema: z.object({
         refresh: z.boolean().optional().describe('强制增量同步后再统计；未翻完时会从游标继续，不会把短页当成结束'),
       }),
