@@ -33,7 +33,7 @@ Cursor：
 
 ## 本机 Node
 
-Node 20+。
+Node 22.23.4+。
 
 ```bash
 git clone https://github.com/dulk-dev/flomo-mcp.git
