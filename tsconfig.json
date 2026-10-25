@@ -16,6 +16,5 @@
     "noEmitOnError": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/worker.ts"]
+  "include": ["src/**/*.ts"]
 }

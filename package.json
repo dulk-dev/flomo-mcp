@@ -1,21 +1,35 @@
 {
-  "name": "flomo-mcp",
+  "name": "@chaochun/flomo-mcp",
   "version": "0.1.0",
-  "private": true,
-  "description": "Personal Streamable HTTP MCP for flomo",
+  "private": false,
+  "description": "个人 flomo stdio MCP",
   "type": "module",
+  "bin": {
+    "flomo-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".env.example"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dulk-dev/flomo-mcp.git"
+  },
   "engines": {
     "node": ">=22.23.4"
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:smoke": "tsx test/smoke.ts",
-    "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy",
-    "cf-typegen": "wrangler types"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -26,7 +40,6 @@
     "@types/node": "^24.3.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.37.0"
+    "vitest": "^3.2.4"
   }
 }

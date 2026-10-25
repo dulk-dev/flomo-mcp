@@ -4,7 +4,7 @@ import { FlomoApiError } from "../errors.js";
 import { emptyMemoCache, type MemoCache, type TokenRecord } from "./types.js";
 
 export interface Store {
-  /** Same-isolate sync mutex key. All Worker KV stores share one scope. */
+  /** In-process sync mutex key. */
   readonly syncScope: string;
   loadToken(): Promise<TokenRecord | null>;
   saveToken(record: TokenRecord): Promise<void>;
@@ -15,35 +15,17 @@ export interface Store {
   endSync(): Promise<void>;
 }
 
-const TOKEN_KEY = "token.json";
-const MEMOS_KEY = "memos.json";
-const SYNC_LOCK_KEY = "sync.lock";
-/** KV expirationTtl minimum is 60s; also the lock TTL if endSync never runs. */
+/** Lock TTL if endSync never runs. */
 const SYNC_LOCK_TTL_SEC = 60;
-
-export const KV_VALUE_MAX_BYTES = 25 * 1024 * 1024;
 
 const dirSyncLocks = new Map<string, number>();
 
-export function serializeMemoCache(
-  cache: MemoCache,
-  { maxBytes }: { maxBytes?: number } = {},
-): string {
-  let json: string;
+export function serializeMemoCache(cache: MemoCache): string {
   try {
-    json = JSON.stringify(cache);
+    return JSON.stringify(cache);
   } catch {
     throw new FlomoApiError("memo 缓存无法序列化（体积过大）");
   }
-  if (maxBytes != null) {
-    const bytes = new TextEncoder().encode(json).byteLength;
-    if (bytes > maxBytes) {
-      throw new FlomoApiError(
-        `memo 缓存 ${bytes} 字节超过 KV 单 key 上限 ${maxBytes}（25 MiB），停止写入以免打坏现有快照`,
-      );
-    }
-  }
-  return json;
 }
 
 export function parseTokenRecord(raw: string): TokenRecord | null {
@@ -167,57 +149,5 @@ export class DirStore implements Store {
 
   async endSync(): Promise<void> {
     dirSyncLocks.delete(this.dir);
-  }
-}
-
-export type KvLike = {
-  get(key: string): Promise<string | null>;
-  put(
-    key: string,
-    value: string,
-    options?: { expirationTtl?: number },
-  ): Promise<void>;
-  delete(key: string): Promise<void>;
-};
-
-export class KvStore implements Store {
-  readonly syncScope = "kv";
-
-  constructor(private readonly kv: KvLike) {}
-
-  async loadToken(): Promise<TokenRecord | null> {
-    const raw = await this.kv.get(TOKEN_KEY);
-    return raw ? parseTokenRecord(raw) : null;
-  }
-
-  async saveToken(record: TokenRecord): Promise<void> {
-    await this.kv.put(TOKEN_KEY, JSON.stringify(record));
-  }
-
-  async clearToken(): Promise<void> {
-    await this.kv.delete(TOKEN_KEY);
-  }
-
-  async loadMemos(): Promise<MemoCache> {
-    const raw = await this.kv.get(MEMOS_KEY);
-    return raw ? parseMemoCache(raw) : emptyMemoCache();
-  }
-
-  async saveMemos(cache: MemoCache): Promise<void> {
-    await this.kv.put(
-      MEMOS_KEY,
-      serializeMemoCache(cache, { maxBytes: KV_VALUE_MAX_BYTES }),
-    );
-  }
-
-  async tryBeginSync(): Promise<boolean> {
-    const held = await this.kv.get(SYNC_LOCK_KEY);
-    if (held) return false;
-    await this.kv.put(SYNC_LOCK_KEY, "1", { expirationTtl: SYNC_LOCK_TTL_SEC });
-    return true;
-  }
-
-  async endSync(): Promise<void> {
-    await this.kv.delete(SYNC_LOCK_KEY);
   }
 }

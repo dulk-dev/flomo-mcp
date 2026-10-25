@@ -9,8 +9,8 @@ export type ApiParamValue = string | number | boolean | Array<string | number>;
 export type ApiParams = Record<string, ApiParamValue | undefined>;
 
 /**
- * flomo web / memo timestamps are China Standard Time. Cloudflare Workers
- * run UTC, so `getTimezoneOffset()` would send `0:0` and desync the cursor
+ * flomo web / memo timestamps are China Standard Time. The process may run
+ * in UTC, so `getTimezoneOffset()` would send `0:0` and desync the cursor
  * from `toEpochSeconds` (which already assumes +08:00).
  */
 export const FLOMO_TZ = '8:0';
@@ -71,7 +71,7 @@ export type InsightStream = {
 };
 
 export class FlomoClient {
-  /** Avoid a KV get on every apiCall during a multi-page sync. */
+  /** Avoid a store read on every apiCall during a multi-page sync. */
   private memoryToken: string | null = null;
 
   constructor(

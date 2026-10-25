@@ -7,9 +7,8 @@ import {
   SYNC_PAGE_LIMIT,
   syncMemoCache,
 } from '../src/flomo/memos.js';
-import { KV_VALUE_MAX_BYTES, parseMemoCache, serializeMemoCache, type Store } from '../src/flomo/store.js';
+import { parseMemoCache, type Store } from '../src/flomo/store.js';
 import { emptyMemoCache, type MemoCache, type TokenRecord } from '../src/flomo/types.js';
-import { FlomoApiError } from '../src/errors.js';
 
 class MemoryStore implements Store {
   readonly syncScope: string;
@@ -68,16 +67,6 @@ function fakeClient(queue: unknown[][]): FlomoClient & { calls: number } {
   };
   return client as unknown as FlomoClient & { calls: number };
 }
-
-describe('serializeMemoCache KV 上限', () => {
-  it('超过 maxBytes 抛 FlomoApiError，不返回残缺 JSON', () => {
-    const cache = emptyMemoCache();
-    cache.memos.a = { slug: 'a', content: 'hello' };
-    expect(() => serializeMemoCache(cache, { maxBytes: 10 })).toThrow(FlomoApiError);
-    expect(serializeMemoCache(cache).length).toBeGreaterThan(10);
-    expect(KV_VALUE_MAX_BYTES).toBe(25 * 1024 * 1024);
-  });
-});
 
 describe('syncMemoCache 分页续传', () => {
   it('单轮只拉 maxPages 页并落盘游标，未翻完不标新鲜', async () => {
@@ -217,7 +206,7 @@ describe('parseMemoCache 旧快照', () => {
 });
 
 describe('getTz', () => {
-  it('固定发 8:0，不跟 Worker UTC 走', () => {
+  it('固定发 8:0，不跟本机 UTC 走', () => {
     expect(getTz()).toBe('8:0');
     expect(FLOMO_TZ).toBe('8:0');
   });
