@@ -1,6 +1,6 @@
 # flomo-mcp
 
-个人用的 flomo stdio MCP（`@chaochun/flomo-mcp`）。进程用 `FLOMO_ACCESS_TOKEN` 或账密登录 flomo，把 access_token 和 memo 缓存写在本机目录。Agent 拉起这个进程即可。
+个人用的 flomo stdio MCP（`@dulk-dev/flomo-mcp`）。进程用 `FLOMO_ACCESS_TOKEN` 或账密登录 flomo，把 access_token 和 memo 缓存写在本机目录。Agent 拉起这个进程即可。
 
 ## 安装和运行
 
@@ -20,7 +20,7 @@ npm start
 发布到 npm 之后也可以：
 
 ```bash
-npx -y @chaochun/flomo-mcp
+npx -y @dulk-dev/flomo-mcp
 ```
 
 Cursor（本机已构建，把路径换成仓库根目录）：
@@ -40,7 +40,7 @@ Cursor（本机已构建，把路径换成仓库根目录）：
 }
 ```
 
-发布后可以把 `command` 换成 `npx`，`args` 换成 `["-y", "@chaochun/flomo-mcp"]`，同样用 `env` 传凭据。不要把 flomo 密码写进仓库。本机用账密即可；若出现「登录环境异常」，改传 `FLOMO_ACCESS_TOKEN`（见下方）。
+发布后可以把 `command` 换成 `npx`，`args` 换成 `["-y", "@dulk-dev/flomo-mcp"]`，同样用 `env` 传凭据。不要把 flomo 密码写进仓库。本机用账密即可；若出现「登录环境异常」，改传 `FLOMO_ACCESS_TOKEN`（见下方）。
 
 ## 环境变量
 
