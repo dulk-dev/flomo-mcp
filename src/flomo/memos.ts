@@ -9,12 +9,9 @@ export const SYNC_PAGE_LIMIT = 200;
 /** Skip flomo list API when a full catch-up finished within this window. */
 export const SYNC_FRESH_MS = 15 * 60 * 1000;
 /**
- * Pages per invocation. Each page is 1 fetch. Token is kept in memory after
- * the first KV read. Free Workers allow 50 external subrequests; 8 pages
- * leaves room for `/user/me`, login, waitUntil catch-up, and KV. Remaining
- * pages continue via waitUntil / cron. Hitting the cap saves progress, not EOF.
- * Do not raise this via wrangler `limits` — Free plan rejects limits.cpu_ms /
- * paid-only subrequest caps (API 100328).
+ * Pages per sync round. Each page is one flomo fetch. Startup, the interval,
+ * and a read tool each run one round, then resume the cursor next time.
+ * Hitting the cap saves progress, not EOF.
  */
 export const SYNC_PAGES_PER_TURN = 8;
 

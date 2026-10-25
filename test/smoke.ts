@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import path from 'node:path';
+import { resolveDataDir } from '../src/config.js';
 import { FlomoClient } from '../src/flomo/client.js';
 import { DirStore } from '../src/flomo/store.js';
 import { asRecord } from '../src/flomo/memos.js';
@@ -22,7 +22,7 @@ const credentials: FlomoCredentials = {
   password: password || null,
 };
 
-const store = new DirStore(path.resolve(process.env.FLOMO_DATA_DIR?.trim() || './data'));
+const store = new DirStore(resolveDataDir(process.env.FLOMO_DATA_DIR));
 const client = new FlomoClient(store, credentials);
 const user = asRecord(await client.apiCall('GET', v1('/user/me'), {}));
 if (!user) {

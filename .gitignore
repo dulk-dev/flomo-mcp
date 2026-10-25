@@ -2,11 +2,10 @@ node_modules
 dist
 .env
 data/
+cache/
 *.log
 .DS_Store
 .dev.vars
-.wrangler
 .mcp-api-key
 .secrets-bulk.json
-worker-configuration.d.ts
 
