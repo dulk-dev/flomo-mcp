@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "description": "个人 flomo stdio MCP",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "flomo-mcp": "dist/index.js"
