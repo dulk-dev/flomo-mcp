@@ -1,6 +1,6 @@
 # flomo-mcp
 
-个人用的 flomo stdio MCP（`@chaochun/flomo-mcp`）。进程用环境变量里的账密登录 flomo，把 access_token 和 memo 缓存写在本机目录。Agent 拉起这个进程即可，不需要 MCP 钥匙。
+个人用的 flomo stdio MCP（`@chaochun/flomo-mcp`）。进程用 `FLOMO_ACCESS_TOKEN` 或账密登录 flomo，把 access_token 和 memo 缓存写在本机目录。Agent 拉起这个进程即可。
 
 ## 安装和运行
 
@@ -40,20 +40,24 @@ Cursor（本机已构建，把路径换成仓库根目录）：
 }
 ```
 
-发布后可以把 `command` 换成 `npx`，`args` 换成 `["-y", "@chaochun/flomo-mcp"]`，同样用 `env` 传账密。不要把 flomo 密码写进仓库。
+发布后可以把 `command` 换成 `npx`，`args` 换成 `["-y", "@chaochun/flomo-mcp"]`，同样用 `env` 传凭据。不要把 flomo 密码写进仓库。本机用账密即可；若出现「登录环境异常」，改传 `FLOMO_ACCESS_TOKEN`（见下方）。
 
 ## 环境变量
 
 | 变量 | 说明 |
 | --- | --- |
-| `FLOMO_ACCOUNT` / `FLOMO_PASSWORD` | flomo 邮箱或手机号 + 密码。进程自己 `login_by_email`。 |
-| `FLOMO_ACCESS_TOKEN` | 有它就跳过账密。失效后没法自动重登，除非同时配了账密。 |
+| `FLOMO_ACCOUNT` / `FLOMO_PASSWORD` | flomo 邮箱或手机号 + 密码。本机或正常网络由进程 `login_by_email`。 |
+| `FLOMO_ACCESS_TOKEN` | 有它就用 token，跳过当次账密登录。可与账密同时留着，token 失效后再重登。 |
 | `FLOMO_DATA_DIR` | `token.json` 和 `memos.json` 的目录。默认 `/workspace/cache/flomo-cache`。 |
 | `FLOMO_SYNC_INTERVAL_MS` | 进程内再同步的间隔（毫秒）。默认 `900000`（15 分钟）。`0` 或 `off` 关闭。 |
 
-不读取 `MCP_API_KEY`。账密或 token 为空会拒绝启动。
+Cloudflare Worker、`wrangler` 部署、HTTP `/mcp`、`flomo.chaochun.cc` 和 `MCP_API_KEY` 已移除。只保留 stdio。账密和 token 都空会拒绝启动。
 
-登录态 401 时清缓存、用账密重登、把当前请求再打一次。不暴露 login / logout / sync-token / purge。
+登录态 401 时清缓存；配了账密就重登，并把当前请求再打一次。不暴露 login / logout / sync-token / purge。
+
+### 登录环境异常
+
+若出现「登录环境异常」，改用 `FLOMO_ACCESS_TOKEN`（可同时留账密，token 失效后再用账密重登）。token 从已登录浏览器复制，或从原 KV 的 `token.json` 读取 `access_token`。云端出口 IP 上 `login_by_email` 容易被 flomo 拒绝；本机或正常网络仍可用账密。
 
 ## 缓存和新鲜度
 
@@ -81,14 +85,14 @@ FLOMO_SYNC_INTERVAL_MS（默认 15 分钟）
 | --- | --- | --- |
 | `flomo_whoami` | `whoami` | 身份 + `insight_remaining` |
 | `flomo_memos` | `memos` | 列表，可按 tag / pinned |
-| `flomo_search` | `search` | 本地缓存全文，多词 AND |
+| `flomo_search` | `search` | 参数是 `keyword`（不是 `query`）；本地缓存全文，多词 AND |
 | `flomo_get` | `get` | 单条，含 HTML |
 | `flomo_new` | `new` | 新建 |
 | `flomo_edit` | `edit` | 替换或追加，回传 `file_ids` |
 | `flomo_delete` | `delete` | 进回收站 |
 | `flomo_restore` | `restore` | 从回收站恢复 |
 | `flomo_trash` | `trash` | 回收站列表 |
-| `flomo_pin` | `pin` | 全局一条置顶，可 `force` |
+| `flomo_pin` | `pin` | 全局仅一条置顶；已有置顶时需 `force: true`，否则报错 |
 | `flomo_unpin` | `unpin` | 取消置顶 |
 | `flomo_tags` | `tags` | 从 memo 派生的标签树 |
 | `flomo_tag_pin` | `tag-pin` | 置顶标签 |
@@ -99,7 +103,7 @@ FLOMO_SYNC_INTERVAL_MS（默认 15 分钟）
 | `flomo_stats` | `stats` | 与网页侧栏同口径 |
 | `flomo_related` | `related` | 语义相关笔记 |
 | `flomo_revisions` | `revisions` | 编辑前后快照 |
-| `flomo_upload` | `upload` | `filename` + `data_base64`，不要本机路径 |
+| `flomo_upload` | `upload` | 参数是 `filename` 和 `data_base64`，不要本地路径 |
 | `flomo_insight` | `insight` / `insights` / `insight-history` / `insight-templates` | 见下一节 |
 
 ## 洞察 mode
