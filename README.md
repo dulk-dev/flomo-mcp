@@ -204,5 +204,3 @@ npm run test:smoke
 ```
 
 默认 CI 不要跑冒烟，也不要把写操作放进默认测试。
-
-Cloudflare Worker、`wrangler`、HTTP `/mcp`、`flomo.chaochun.cc` 和 `MCP_API_KEY` 已移除。只保留本机 stdio。
